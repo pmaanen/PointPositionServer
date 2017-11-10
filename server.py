@@ -13,9 +13,9 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Remote control for ... something. Works by sending the coordinates of the point to the network.')
 
-parser.add_argument('--port', default=5551, type=int, help='Specifies the source port the server should use, subject to privilege restrictions and availability.')
+parser.add_argument('--port', default=5551, type=int, help='Specify the source port the server should use, subject to privilege restrictions and availability.')
 
-parser.add_argument("--verbose",action='store_true',help='Turns on extra verbosity.')
+parser.add_argument("--verbose",action='store_true',help='Turn on extra verbosity')
 
 def Log(*msg):
     if args.verbose:
