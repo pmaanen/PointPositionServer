@@ -1,9 +1,9 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
+from matplotlib import pyplot as plt
+from matplotlib import rcParams
 import warnings
 warnings.filterwarnings("ignore")
-matplotlib.rcParams['toolbar'] = 'None'
+rcParams['toolbar'] = 'None'
 import socket
 from threading import Thread,Event
 from collections import deque
@@ -16,6 +16,10 @@ parser = argparse.ArgumentParser(description='Remote control for ... something. 
 parser.add_argument('--port', default=5551, type=int, help='Specify the source port the server should use, subject to privilege restrictions and availability.')
 
 parser.add_argument("--verbose",action='store_true',help='Turn on extra verbosity')
+
+parser.add_argument("--suppress-newline",action='store_false',help='Supress newline character at end of sent string')
+
+parser.add_argument("--rate",default=1, type=float, help='Set repetition rate in RATE seconds of position sender.')
 
 def Log(*msg):
     if args.verbose:
@@ -105,25 +109,28 @@ class Server:
         c,addr=None,None
         while not c:
             if self.stop_event.is_set():
-                return
+                return False
             try:
                 c,addr=self.s.accept()
-            except:
+            except socket.error:
                 continue
-        Log('Got connection from ',*addr)
+        Log('Got connection from',*addr)
         while True:
-            sleep(1)
+            sleep(args.rate)
             try:
                 self.pos=self.q.pop()
-                c.send(str(self.pos)+"\n")
+                c.send(str(int(self.pos[0]))+" "+str(int(self.pos[1]))+args.suppress_newline*"\n")
             except IndexError:
-                c.send(str(self.pos)+"\n")
+                c.send(str(int(self.pos[0]))+" "+str(int(self.pos[1]))+args.suppress_newline*"\n")
+            except socket.error:
+                print "Connection was closed..."
+                continue
             if self.stop_event.is_set():
                 c.send("Closing Connection...\n")
                 Log("Closing Connection...")
                 c.close()
                 break
-        return
+        return False
 
 def guiThread(stop_event,position):
     fig = plt.figure(num='Remote Control')
@@ -145,28 +152,23 @@ def guiThread(stop_event,position):
     return
 
 def networkThread(stop_event,position):
-    try:
         r=Server(position,stop_event)
         while not stop_event.is_set():
-            r.sendpos()
-    except Exception as e:
-        print str(e)
-        return
-
+            try:
+                r.sendpos()
+            except socket.error:
+                continue
 def main():
     global args
     args=parser.parse_args()
-    try:
-        stop_event=Event()
-        q=deque(maxlen=1)
-        thread1 = Thread(target=guiThread,args=(stop_event,q))
-        thread2 = Thread(target=networkThread,args=(stop_event,q))
-        thread1.start()
-        thread2.start()
-        thread1.join()
-        thread2.join()
-    except KeyboardInterrupt:
-        return
+    stop_event=Event()
+    q=deque(maxlen=1)
+    thread1 = Thread(target=guiThread,args=(stop_event,q))
+    thread2 = Thread(target=networkThread,args=(stop_event,q))
+    thread1.start()
+    thread2.start()
+    thread1.join()
+    thread2.join()
 
 
 if __name__=="__main__":  
