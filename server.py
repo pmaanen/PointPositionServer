@@ -126,7 +126,7 @@ class Server:
         return
 
 def guiThread(stop_event,position):
-    fig = plt.figure()
+    fig = plt.figure(num='Remote Control')
     ax = fig.add_subplot(111)
     ax.yaxis.grid(color='black', linestyle='dotted', linewidth=1)
     points=ax.plot(1.5,500,'bo',markersize=8)
