@@ -1,12 +1,29 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
-#matplotlib.rcParams['toolbar'] = 'None'
+import warnings
+warnings.filterwarnings("ignore")
+matplotlib.rcParams['toolbar'] = 'None'
 import socket
 from threading import Thread,Event
 from collections import deque
 from time import sleep
 
+import argparse
+
+parser = argparse.ArgumentParser(description='Remote control for ... something. Works by sending the coordinates of the point to the network.')
+
+parser.add_argument('--port', default=5551, type=int, help='Specifies the source port the server should use, subject to privilege restrictions and availability.')
+
+parser.add_argument("--verbose",action='store_true',help='Turns on extra verbosity.')
+
+def Log(*msg):
+    if args.verbose:
+        print ' '.join([str(x) for x in msg])
+        #print ' '.join(map(str, msg))
+        return
+    else:
+        return
 
 class Draggable:
     def __init__(self,point,position,bar):
@@ -35,7 +52,6 @@ class Draggable:
         xdata,ydata=self.point.get_data()
         x=xdata[0]
         y=ydata[0]
-        #x0, y0 = self.point.xy
         self.press = x, y, event.xdata, event.ydata
 
     def on_motion(self, event):
@@ -45,10 +61,12 @@ class Draggable:
         x0, y0, xpress, ypress = self.press
         dx = event.xdata - xpress
         dy = event.ydata - ypress
-        self.point.set_data([x0+dx],[y0+dy])
-        self.point.figure.canvas.draw()
-        self.update_pos()
-        self.bar.set_x(round(x0+dx)-0.5)
+
+        if round(x0+dx)>0 and round(x0+dx)<21: 
+            self.point.set_data([x0+dx],[y0+dy])
+            self.point.figure.canvas.draw()
+            self.update_pos()
+            self.bar.set_x(round(x0+dx)-0.5)
 
     def on_release(self, event):
         'on release we reset the press data'
@@ -73,9 +91,8 @@ class Server:
         self.s = socket.socket()         # Create a socket object
         self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.s.setblocking(0)
-        self.s.settimeout(10)
-        host = socket.gethostname() # Get local machine name
-        port = 5551
+        self.s.settimeout(0.2)
+        port = args.port
         try:
             self.s.bind(('',port))
         except Exception as e:
@@ -84,9 +101,16 @@ class Server:
 
     def sendpos(self):
         self.s.listen(5)
-        print "Waiting for connections..."
-        c,addr=self.s.accept()
-        print 'Got connection from', addr
+        Log("Waiting for connections...")
+        c,addr=None,None
+        while not c:
+            if self.stop_event.is_set():
+                return
+            try:
+                c,addr=self.s.accept()
+            except:
+                continue
+        Log('Got connection from ',*addr)
         while True:
             sleep(1)
             try:
@@ -96,43 +120,42 @@ class Server:
                 c.send(str(self.pos)+"\n")
             if self.stop_event.is_set():
                 c.send("Closing Connection...\n")
-                print "Closing Connection..."
+                Log("Closing Connection...")
                 c.close()
                 break
         return
 
 def guiThread(stop_event,position):
-    try:
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        points = ax.plot(1,500,'bo')
-        ax.set_xlim(0,21)
-        ax.set_ylim(0,2000)
-        ax.set_xlabel("#")
-        ax.set_ylabel("rate [a.u.]")
-        bar= ax.bar(1, 2000, width=1, bottom=None, alpha=0.1, color="green")
-        for point in points:
-            dr = Draggable(point,position,bar[0])
-            dr.connect()
-        plt.show()
-        stop_event.set()
-    except KeyboardInterrupt:
-        stop_event.set()
-        return
-
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.yaxis.grid(color='black', linestyle='dotted', linewidth=1)
+    points=ax.plot(1.5,500,'bo',markersize=8)
+    ax.set_xlim(0,21)
+    ax.set_ylim(0,2000)
+    ax.set_xlabel("#")
+    ax.set_ylabel("rate [a.u.]")
+    xticks = ax.xaxis.get_major_ticks() 
+    xticks[0].label1.set_visible(False)
+    bar= ax.bar(1, 2000, width=1, bottom=None, alpha=0.1, color="green")
+    for point in points:
+        dr = Draggable(point,position,bar[0])
+        dr.connect()
+    plt.show()
+    stop_event.set()
+    return
 
 def networkThread(stop_event,position):
     try:
         r=Server(position,stop_event)
         while not stop_event.is_set():
             r.sendpos()
-    except KeyboardInterrupt:
-        return
     except Exception as e:
         print str(e)
         return
 
 def main():
+    global args
+    args=parser.parse_args()
     try:
         stop_event=Event()
         q=deque(maxlen=1)
