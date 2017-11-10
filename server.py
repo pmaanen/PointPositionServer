@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib
+#matplotlib.rcParams['toolbar'] = 'None'
 import socket
 from threading import Thread,Event
 from collections import deque
@@ -7,7 +9,8 @@ from time import sleep
 
 
 class Draggable:
-    def __init__(self,point,position):
+    def __init__(self,point,position,bar):
+        self.bar=bar
         self.point = point
         self.press = None
         self.q=position
@@ -45,6 +48,7 @@ class Draggable:
         self.point.set_data([x0+dx],[y0+dy])
         self.point.figure.canvas.draw()
         self.update_pos()
+        self.bar.set_x(round(x0+dx)-0.5)
 
     def on_release(self, event):
         'on release we reset the press data'
@@ -59,7 +63,7 @@ class Draggable:
 
     def update_pos(self):
         x,y=self.point.get_data()
-        self.q.append((int(x[0]),int(y[0])))
+        self.q.append((round(x[0]),round(y[0])))
 
 class Server:
     def __init__(self,q,stop_event):
@@ -76,13 +80,12 @@ class Server:
             self.s.bind(('',port))
         except Exception as e:
             print "Error: " + str(e)
-            #self.s.shutdown()
             raise
 
     def sendpos(self):
         self.s.listen(5)
         print "Waiting for connections..."
-        c, addr = self.s.accept()     # Establish connection with client.
+        c,addr=self.s.accept()
         print 'Got connection from', addr
         while True:
             sleep(1)
@@ -99,18 +102,23 @@ class Server:
         return
 
 def guiThread(stop_event,position):
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    points = ax.plot(1,500,'bo')
-    ax.set_xlim(0,20)
-    ax.set_ylim(0,2000)
-    ax.set_xlabel("#")
-    ax.set_ylabel("rate [a.u.]")
-    for point in points:
-        dr = Draggable(point,position)
-        dr.connect()
-    plt.show()
-    stop_event.set()
+    try:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        points = ax.plot(1,500,'bo')
+        ax.set_xlim(0,21)
+        ax.set_ylim(0,2000)
+        ax.set_xlabel("#")
+        ax.set_ylabel("rate [a.u.]")
+        bar= ax.bar(1, 2000, width=1, bottom=None, alpha=0.1, color="green")
+        for point in points:
+            dr = Draggable(point,position,bar[0])
+            dr.connect()
+        plt.show()
+        stop_event.set()
+    except KeyboardInterrupt:
+        stop_event.set()
+        return
 
 
 def networkThread(stop_event,position):
@@ -118,20 +126,25 @@ def networkThread(stop_event,position):
         r=Server(position,stop_event)
         while not stop_event.is_set():
             r.sendpos()
+    except KeyboardInterrupt:
+        return
     except Exception as e:
         print str(e)
         return
 
 def main():
-    stop_event=Event()
-    q=deque(maxlen=1)
-    thread1 = Thread(target=guiThread,args=(stop_event,q))
-    thread2 = Thread(target=networkThread,args=(stop_event,q))
-    thread1.start()
-    thread2.start()
-    thread1.join()
-    thread2.join()
+    try:
+        stop_event=Event()
+        q=deque(maxlen=1)
+        thread1 = Thread(target=guiThread,args=(stop_event,q))
+        thread2 = Thread(target=networkThread,args=(stop_event,q))
+        thread1.start()
+        thread2.start()
+        thread1.join()
+        thread2.join()
+    except KeyboardInterrupt:
+        return
 
 
-if __name__=="__main__":
+if __name__=="__main__":  
     main()
